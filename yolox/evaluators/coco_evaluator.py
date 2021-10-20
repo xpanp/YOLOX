@@ -11,6 +11,7 @@ import time
 from loguru import logger
 from tqdm import tqdm
 
+from yolox import utils
 import torch
 
 from yolox.utils import (
@@ -22,6 +23,25 @@ from yolox.utils import (
     xyxy2xywh
 )
 
+def show(cocoEval):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    # np.save(file="data.npy", arr=cocoEval.eval['precision'])
+    pr_array1 = cocoEval.eval['precision'][0,:,0,0,2]
+    pr_array2 = cocoEval.eval['precision'][1,:,0,0,2]
+    pr_array3 = cocoEval.eval['precision'][2,:,0,0,2]
+    x = np.arange(0.0, 1.01, 0.01)
+    plt.xlabel('recall')
+    plt.ylabel('precision')
+    plt.xlim(0, 1.0)
+    plt.ylim(0, 1.01)
+    plt.grid(True)
+    plt.plot(x, pr_array1,'b-', label='IoU=0.3')
+    plt.plot(x, pr_array2,'c-', label='IoU=0.5')
+    plt.plot(x, pr_array3,'y-', label='IoU=0.7')
+    plt.legend(loc="lower left")
+    plt.savefig('./PR.jpg')
+    plt.show()
 
 class COCOEvaluator:
     """
@@ -47,6 +67,31 @@ class COCOEvaluator:
         self.nmsthre = nmsthre
         self.num_classes = num_classes
         self.testdev = testdev
+
+    # def evaluate(
+    #     self,
+    #     resJson="test.json"
+    # ):
+    #     if not is_main_process():
+    #         return 0, 0, None
+    #     logger.info("Evaluate in main process...")
+    #     annType = ["segm", "bbox", "keypoints"]
+    #     cocoGt = self.dataloader.dataset.coco
+    #     cocoDt = cocoGt.loadRes(resJson)
+    #     try:
+    #         from yolox.layers import COCOeval_opt as COCOeval
+    #     except ImportError:
+    #         from pycocotools.cocoeval import COCOeval
+    #         logger.warning("Use standard COCOeval.")
+    #     cocoEval = COCOeval(cocoGt, cocoDt, annType[1])
+    #     cocoEval.evaluate()
+    #     cocoEval.accumulate()
+    #     redirect_string = io.StringIO()
+    #     with contextlib.redirect_stdout(redirect_string):
+    #         cocoEval.summarize()
+    #     info = redirect_string.getvalue()
+    #     # show(cocoEval)
+    #     return cocoEval.stats[0], cocoEval.stats[2], info
 
     def evaluate(
         self,
@@ -202,6 +247,8 @@ class COCOEvaluator:
                 _, tmp = tempfile.mkstemp()
                 json.dump(data_dict, open(tmp, "w"))
                 cocoDt = cocoGt.loadRes(tmp)
+                # json.dump(data_dict, open("test.json", "w"))
+                # cocoDt = cocoGt.loadRes("test.json")
             try:
                 from yolox.layers import COCOeval_opt as COCOeval
             except ImportError:
@@ -216,6 +263,8 @@ class COCOEvaluator:
             with contextlib.redirect_stdout(redirect_string):
                 cocoEval.summarize()
             info += redirect_string.getvalue()
-            return cocoEval.stats[0], cocoEval.stats[1], info
+
+            # show(cocoEval)
+            return cocoEval.stats[0], cocoEval.stats[2], info
         else:
             return 0, 0, info

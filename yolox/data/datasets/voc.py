@@ -20,7 +20,6 @@ from yolox.evaluators.voc_eval import voc_eval
 from .datasets_wrapper import Dataset
 from .voc_classes import VOC_CLASSES
 
-
 class AnnotationTransform(object):
 
     """Transforms a VOC annotation into a Tensor of bbox coords and label index
@@ -313,7 +312,7 @@ class VOCDetection(Dataset):
     def _do_python_eval(self, output_dir="output", iou=0.5):
         rootpath = os.path.join(self.root, "VOC" + self._year)
         name = self.image_set[0][1]
-        annopath = os.path.join(rootpath, "Annotations", "{:s}.xml")
+        annopath = os.path.join(rootpath, "Annotations", "{}.xml")
         imagesetfile = os.path.join(rootpath, "ImageSets", "Main", name + ".txt")
         cachedir = os.path.join(
             self.root, "annotations_cache", "VOC" + self._year, name
@@ -364,3 +363,21 @@ class VOCDetection(Dataset):
             print("--------------------------------------------------------------")
 
         return np.mean(aps)
+
+if __name__ == "__main__":
+    dataset = VOCDetection(
+                data_dir=os.path.join("./datasets", "VOCdevkit"),
+                image_sets=[('2007', 'trainval')],
+                img_size=(640, 640),
+                preproc=None,
+                cache=False,
+            )
+    # print(dataset.__len__())
+    for i in range(dataset.__len__()):
+        img, target, img_info, img_id = dataset.__getitem__(i)
+        print(target, img_info, img_id)
+        cv2.imshow("video",img)
+        c = cv2.waitKey(0)
+        if c == 27:
+            break
+        

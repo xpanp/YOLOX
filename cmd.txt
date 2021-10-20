@@ -1,0 +1,11 @@
+预测
+python tools/demo.py image -f exps/example/custom/yolox_s.py -c food60-s-100.pth --path ./datasets/60test/1苹果/苹果_300_6.jpg --conf 0.25 --nms 0.45 --tsize 640 --save_result --device gpu
+python tools/mydemo.py image --save_result --fp16 --path ./datasets/60test/1苹果/苹果_300_6.jpg -c food60-s-100-1.pth
+
+训练
+python tools/train.py -f exps/example/custom/yolox_s.py -d 2 -b 16 --fp16 -o -c yolox_s.pth
+恢复训练
+python tools/train.py -f exps/example/custom/yolox_s.py -d 2 -b 16 --fp16 -o --resume -e 75 -c ./YOLOX_outputs/yolox_s/latest_ckpt.pth
+
+评估
+python tools/eval.py -f exps/example/custom/yolox_s.py -c food60-s-100-1.pth -b 1 -d 1 --conf 0.01

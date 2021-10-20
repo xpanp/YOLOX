@@ -9,17 +9,16 @@ from loguru import logger
 import numpy as np
 
 import cv2
-
+import csv
 import torch
 
 from yolox.data.data_augment import ValTransform
-from yolox.data.datasets import COCO_CLASSES
 from yolox.data.datasets import FOOD_CLASSES
 from yolox.exp import get_exp
 from yolox.utils import fuse_model, get_model_info, postprocess, vis
+from yolox.utils.visualize import vis_with_res
 
 IMAGE_EXT = [".jpg", ".jpeg", ".webp", ".bmp", ".png"]
-
 
 def make_parser():
     parser = argparse.ArgumentParser("YOLOX Demo!")
@@ -30,7 +29,7 @@ def make_parser():
     parser.add_argument("-n", "--name", type=str, default=None, help="model name")
 
     parser.add_argument(
-        "--path", default="./assets/dog.jpg", help="path to images or video"
+        "--path", default="./datasets/60test", help="path to images or video"
     )
     parser.add_argument("--camid", type=int, default=0, help="webcam demo camera id")
     parser.add_argument(
@@ -43,14 +42,14 @@ def make_parser():
     parser.add_argument(
         "-f",
         "--exp_file",
-        default=None,
+        default="exps/example/custom/yolox_s.py",
         type=str,
         help="pls input your experiment description file",
     )
-    parser.add_argument("-c", "--ckpt", default=None, type=str, help="ckpt for eval")
+    parser.add_argument("-c", "--ckpt", default="food60-s-100-1.pth", type=str, help="ckpt for eval")
     parser.add_argument(
         "--device",
-        default="cpu",
+        default="gpu",
         type=str,
         help="device to run our model, can either be cpu or gpu",
     )
@@ -71,20 +70,6 @@ def make_parser():
         action="store_true",
         help="To be compatible with older versions",
     )
-    parser.add_argument(
-        "--fuse",
-        dest="fuse",
-        default=False,
-        action="store_true",
-        help="Fuse conv and bn for testing.",
-    )
-    parser.add_argument(
-        "--trt",
-        dest="trt",
-        default=False,
-        action="store_true",
-        help="Using TensorRT model for testing.",
-    )
     return parser
 
 
@@ -104,7 +89,7 @@ class Predictor(object):
         self,
         model,
         exp,
-        cls_names=COCO_CLASSES,
+        cls_names=FOOD_CLASSES,
         trt_file=None,
         decoder=None,
         device="cpu",
@@ -121,16 +106,8 @@ class Predictor(object):
         self.device = device
         self.fp16 = fp16
         self.preproc = ValTransform(legacy=legacy)
-        if trt_file is not None:
-            from torch2trt import TRTModule
 
-            model_trt = TRTModule()
-            model_trt.load_state_dict(torch.load(trt_file))
-
-            x = torch.ones(1, 3, exp.test_size[0], exp.test_size[1]).cuda()
-            self.model(x)
-            self.model = model_trt
-
+    
     def inference(self, img):
         img_info = {"id": 0}
         if isinstance(img, str):
@@ -172,7 +149,7 @@ class Predictor(object):
         ratio = img_info["ratio"]
         img = img_info["raw_img"]
         if output is None:
-            return img
+            return img, []
         output = output.cpu()
 
         bboxes = output[:, 0:4]
@@ -183,31 +160,50 @@ class Predictor(object):
         cls = output[:, 6]
         scores = output[:, 4] * output[:, 5]
 
-        vis_res = vis(img, bboxes, scores, cls, cls_conf, self.cls_names)
-        return vis_res
+        img, ress = vis_with_res(img, bboxes, scores, cls, cls_conf, self.cls_names)
+        return img, ress
 
 
 def image_demo(predictor, vis_folder, path, current_time, save_result):
     if os.path.isdir(path):
         files = get_image_list(path)
     else:
-        files = [path]
+        files = [path] 
     files.sort()
+
+    save_base_folder = os.path.join(vis_folder, "foodtest")
+    os.makedirs(save_base_folder, exist_ok=True)
+    csv_file_name = os.path.join(save_base_folder, "result.csv")
+    csvfile = open(csv_file_name, "w", newline='')
+    writer = csv.writer(csvfile)
+    writer.writerow(["filename","class","score", "Xmin", "Ymin", "Xmax", "Ymax"])
     for image_name in files:
         outputs, img_info = predictor.inference(image_name)
-        result_image = predictor.visual(outputs[0], img_info, predictor.confthre)
+        result_image, ress = predictor.visual(outputs[0], img_info, predictor.confthre)
         if save_result:
+            print("----image_name", str(image_name))
+            # TODO support \\ and /
+            dir = image_name.split("\\")[-2]
+            print("----dir", str(dir))
             save_folder = os.path.join(
-                vis_folder, time.strftime("%Y_%m_%d_%H_%M_%S", current_time)
+                save_base_folder, dir
             )
             os.makedirs(save_folder, exist_ok=True)
             save_file_name = os.path.join(save_folder, os.path.basename(image_name))
+           
+            res_path = os.path.join(dir, os.path.basename(image_name))
             logger.info("Saving detection result in {}".format(save_file_name))
+            for i in range(len(ress)):
+                ress[i].insert(0, res_path)
+                # logger.info("name {} class {} score {%.2f} x1 {} y1 {} x2 {} y2 {}".format(name_for_csv ,res[0], res[1], int(res[2]), int(res[3]), int(res[4]), int(res[5])))
+            if len(ress) != 0:
+                writer.writerows(ress)
             # cv2.imwrite(save_file_name, result_image)
             cv2.imencode('.jpg', result_image)[1].tofile(save_file_name)
         ch = cv2.waitKey(0)
         if ch == 27 or ch == ord("q") or ch == ord("Q"):
             break
+    csvfile.close()
 
 
 def imageflow_demo(predictor, vis_folder, current_time, args):
@@ -231,7 +227,7 @@ def imageflow_demo(predictor, vis_folder, current_time, args):
         ret_val, frame = cap.read()
         if ret_val:
             outputs, img_info = predictor.inference(frame)
-            result_frame = predictor.visual(outputs[0], img_info, predictor.confthre)
+            result_frame, _ = predictor.visual(outputs[0], img_info, predictor.confthre)
             if args.save_result:
                 vid_writer.write(result_frame)
             ch = cv2.waitKey(1)
@@ -253,9 +249,6 @@ def main(exp, args):
         vis_folder = os.path.join(file_name, "vis_res")
         os.makedirs(vis_folder, exist_ok=True)
 
-    if args.trt:
-        args.device = "gpu"
-
     logger.info("Args: {}".format(args))
 
     if args.conf is not None:
@@ -274,33 +267,18 @@ def main(exp, args):
             model.half()  # to FP16
     model.eval()
 
-    if not args.trt:
-        if args.ckpt is None:
-            ckpt_file = os.path.join(file_name, "best_ckpt.pth")
-        else:
-            ckpt_file = args.ckpt
-        logger.info("loading checkpoint")
-        ckpt = torch.load(ckpt_file, map_location="cpu")
-        # load the model state dict
-        model.load_state_dict(ckpt["model"])
-        logger.info("loaded checkpoint done.")
-
-    if args.fuse:
-        logger.info("\tFusing model...")
-        model = fuse_model(model)
-
-    if args.trt:
-        assert not args.fuse, "TensorRT model is not support model fusing!"
-        trt_file = os.path.join(file_name, "model_trt.pth")
-        assert os.path.exists(
-            trt_file
-        ), "TensorRT model is not found!\n Run python3 tools/trt.py first!"
-        model.head.decode_in_inference = False
-        decoder = model.head.decode_outputs
-        logger.info("Using TensorRT to inference")
+    if args.ckpt is None:
+        ckpt_file = os.path.join(file_name, "best_ckpt.pth")
     else:
-        trt_file = None
-        decoder = None
+        ckpt_file = args.ckpt
+    logger.info("loading checkpoint")
+    ckpt = torch.load(ckpt_file, map_location="cpu")
+    # load the model state dict
+    model.load_state_dict(ckpt["model"])
+    logger.info("loaded checkpoint done.")
+
+    trt_file = None
+    decoder = None
 
     predictor = Predictor(model, exp, FOOD_CLASSES, trt_file, decoder, args.device, args.fp16, args.legacy)
     current_time = time.localtime()
@@ -308,7 +286,6 @@ def main(exp, args):
         image_demo(predictor, vis_folder, args.path, current_time, args.save_result)
     elif args.demo == "video" or args.demo == "webcam":
         imageflow_demo(predictor, vis_folder, current_time, args)
-
 
 if __name__ == "__main__":
     args = make_parser().parse_args()

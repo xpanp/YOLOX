@@ -7,3 +7,6 @@ from .coco_classes import COCO_CLASSES
 from .datasets_wrapper import ConcatDataset, Dataset, MixConcatDataset
 from .mosaicdetection import MosaicDetection
 from .voc import VOCDetection
+from .voc_classes import VOC_CLASSES
+from .food import FoodDataset
+from .food_classes import FOOD_CLASSES

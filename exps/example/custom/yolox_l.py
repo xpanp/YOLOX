@@ -5,33 +5,15 @@ import os
 
 import torch
 import torch.distributed as dist
+
 from yolox.exp import Exp as MyExp
 
-import torch.nn as nn
-
-# class Exp(MyExp):
-#     def __init__(self):
-#         super(Exp, self).__init__()
-#         self.depth = 0.33
-#         self.width = 0.50
-#         self.exp_name = os.path.split(os.path.realpath(__file__))[1].split(".")[0]
-
-#         # Define yourself dataset path
-#         self.data_dir = "datasets/coco128"
-#         self.train_ann = "instances_train2017.json"
-#         self.val_ann = "instances_val2017.json"
-
-#         self.num_classes = 71
-
-#         self.max_epoch = 300
-#         self.data_num_workers = 4
-#         self.eval_interval = 1
 
 class Exp(MyExp):
     def __init__(self):
         super(Exp, self).__init__()
-        self.depth = 0.33
-        self.width = 0.50
+        self.depth = 1.0
+        self.width = 1.0
         self.exp_name = os.path.split(os.path.realpath(__file__))[1].split(".")[0]
 
         self.data_dir = "datasets/food"
@@ -40,13 +22,7 @@ class Exp(MyExp):
 
         self.num_classes = 60
 
-        # 不进行缩放
-        self.mosaic_scale = (1.0, 1.0)
-        self.mixup_scale = (1.0, 1.0)
-        # 不进行颜色空间转换
-        self.hsv_prob = 0.0
-
-        self.max_epoch = 100
+        self.max_epoch = 300
         self.data_num_workers = 4
         self.eval_interval = 1
 
@@ -167,31 +143,3 @@ class Exp(MyExp):
             testdev=testdev,
         )
         return evaluator
-    
-    def get_optimizer(self, batch_size):
-        if "optimizer" not in self.__dict__:
-            if self.warmup_epochs > 0:
-                lr = self.warmup_lr
-            else:
-                lr = self.basic_lr_per_img * batch_size
-
-            pg0, pg1, pg2 = [], [], []  # optimizer parameter groups
-
-            for k, v in self.model.named_modules():
-                if hasattr(v, "bias") and isinstance(v.bias, nn.Parameter):
-                    pg2.append(v.bias)  # biases
-                if isinstance(v, nn.BatchNorm2d) or "bn" in k:
-                    pg0.append(v.weight)  # no decay
-                elif hasattr(v, "weight") and isinstance(v.weight, nn.Parameter):
-                    pg1.append(v.weight)  # apply decay
-
-            optimizer = torch.optim.SGD(
-                pg0, lr=lr, momentum=self.momentum, nesterov=True
-            )
-            optimizer.add_param_group(
-                {"params": pg1, "weight_decay": self.weight_decay}
-            )  # add pg1 with weight_decay
-            optimizer.add_param_group({"params": pg2})
-            self.optimizer = optimizer
-
-        return self.optimizer

@@ -189,8 +189,8 @@ class TrainTransform:
         # bbox_o: [xyxy] to [c_x,c_y,w,h]
         boxes_o = xyxy2cxcywh(boxes_o)
 
-        if random.random() < self.hsv_prob:
-            augment_hsv(image)
+        # if random.random() < self.hsv_prob:
+        #     augment_hsv(image)
         image_t, boxes = _mirror(image, boxes, self.flip_prob)
         height, width, _ = image_t.shape
         image_t, r_ = preproc(image_t, input_dim)
@@ -250,3 +250,11 @@ class ValTransform:
             img -= np.array([0.485, 0.456, 0.406]).reshape(3, 1, 1)
             img /= np.array([0.229, 0.224, 0.225]).reshape(3, 1, 1)
         return img, np.zeros((1, 5))
+
+if __name__ == "__main__":
+    import cv2
+    img = cv2.imdecode(np.fromfile("datasets/60test/52橙子/橙子_3703.jpg",dtype=np.uint8),-1)
+    cv2.imshow("test", img)
+    augment_hsv(img)
+    cv2.imshow("hsv", img)
+    cv2.waitKey(0)

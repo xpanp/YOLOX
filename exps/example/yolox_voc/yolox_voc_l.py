@@ -1,60 +1,32 @@
-#!/usr/bin/env python3
-# -*- coding:utf-8 -*-
-# Copyright (c) Megvii, Inc. and its affiliates.
+# encoding: utf-8
 import os
 
 import torch
 import torch.distributed as dist
+
+from yolox.data import get_yolox_datadir
 from yolox.exp import Exp as MyExp
 
-import torch.nn as nn
-
-# class Exp(MyExp):
-#     def __init__(self):
-#         super(Exp, self).__init__()
-#         self.depth = 0.33
-#         self.width = 0.50
-#         self.exp_name = os.path.split(os.path.realpath(__file__))[1].split(".")[0]
-
-#         # Define yourself dataset path
-#         self.data_dir = "datasets/coco128"
-#         self.train_ann = "instances_train2017.json"
-#         self.val_ann = "instances_val2017.json"
-
-#         self.num_classes = 71
-
-#         self.max_epoch = 300
-#         self.data_num_workers = 4
-#         self.eval_interval = 1
 
 class Exp(MyExp):
     def __init__(self):
         super(Exp, self).__init__()
-        self.depth = 0.33
-        self.width = 0.50
+        self.num_classes = 20
+        self.depth = 1.0
+        self.width = 1.0
+        self.warmup_epochs = 1
+
+        # ---------- transform config ------------ #
+        self.mosaic_prob = 1.0
+        self.mixup_prob = 1.0
+        self.hsv_prob = 1.0
+        self.flip_prob = 0.5
+
         self.exp_name = os.path.split(os.path.realpath(__file__))[1].split(".")[0]
 
-        self.data_dir = "datasets/food"
-        self.train_ann = "train_food.json"
-        self.val_ann = "test_food.json"
-
-        self.num_classes = 60
-
-        # 不进行缩放
-        self.mosaic_scale = (1.0, 1.0)
-        self.mixup_scale = (1.0, 1.0)
-        # 不进行颜色空间转换
-        self.hsv_prob = 0.0
-
-        self.max_epoch = 100
-        self.data_num_workers = 4
-        self.eval_interval = 1
-
-    def get_data_loader(
-        self, batch_size, is_distributed, no_aug=False, cache_img=False
-    ):
+    def get_data_loader(self, batch_size, is_distributed, no_aug=False, cache_img=False):
         from yolox.data import (
-            FoodDataset,
+            VOCDetection,
             TrainTransform,
             YoloBatchSampler,
             DataLoader,
@@ -66,13 +38,12 @@ class Exp(MyExp):
             wait_for_the_master,
             get_local_rank,
         )
-
         local_rank = get_local_rank()
 
         with wait_for_the_master(local_rank):
-            dataset = FoodDataset(
-                data_dir=self.data_dir,
-                json_file=self.train_ann,
+            dataset = VOCDetection(
+                data_dir=os.path.join(get_yolox_datadir(), "VOCdevkit"),
+                image_sets=[('2007', 'trainval')],
                 img_size=self.input_size,
                 preproc=TrainTransform(
                     max_labels=50,
@@ -105,7 +76,9 @@ class Exp(MyExp):
         if is_distributed:
             batch_size = batch_size // dist.get_world_size()
 
-        sampler = InfiniteSampler(len(self.dataset), seed=self.seed if self.seed else 0)
+        sampler = InfiniteSampler(
+            len(self.dataset), seed=self.seed if self.seed else 0
+        )
 
         batch_sampler = YoloBatchSampler(
             sampler=sampler,
@@ -117,8 +90,7 @@ class Exp(MyExp):
         dataloader_kwargs = {"num_workers": self.data_num_workers, "pin_memory": True}
         dataloader_kwargs["batch_sampler"] = batch_sampler
 
-        # Make sure each process has different random seed, especially for 'fork' method.
-        # Check https://github.com/pytorch/pytorch/issues/63311 for more details.
+        # Make sure each process has different random seed, especially for 'fork' method
         dataloader_kwargs["worker_init_fn"] = worker_init_reset_seed
 
         train_loader = DataLoader(self.dataset, **dataloader_kwargs)
@@ -126,12 +98,11 @@ class Exp(MyExp):
         return train_loader
 
     def get_eval_loader(self, batch_size, is_distributed, testdev=False, legacy=False):
-        from yolox.data import FoodDataset, ValTransform
+        from yolox.data import VOCDetection, ValTransform
 
-        valdataset = FoodDataset(
-            data_dir=self.data_dir,
-            json_file=self.val_ann,
-            name="60food",
+        valdataset = VOCDetection(
+            data_dir=os.path.join(get_yolox_datadir(), "VOCdevkit"),
+            image_sets=[('2007', 'test')],
             img_size=self.test_size,
             preproc=ValTransform(legacy=legacy),
         )
@@ -155,43 +126,14 @@ class Exp(MyExp):
         return val_loader
 
     def get_evaluator(self, batch_size, is_distributed, testdev=False, legacy=False):
-        from yolox.evaluators import COCOEvaluator
+        from yolox.evaluators import VOCEvaluator
 
         val_loader = self.get_eval_loader(batch_size, is_distributed, testdev, legacy)
-        evaluator = COCOEvaluator(
+        evaluator = VOCEvaluator(
             dataloader=val_loader,
             img_size=self.test_size,
             confthre=self.test_conf,
             nmsthre=self.nmsthre,
             num_classes=self.num_classes,
-            testdev=testdev,
         )
         return evaluator
-    
-    def get_optimizer(self, batch_size):
-        if "optimizer" not in self.__dict__:
-            if self.warmup_epochs > 0:
-                lr = self.warmup_lr
-            else:
-                lr = self.basic_lr_per_img * batch_size
-
-            pg0, pg1, pg2 = [], [], []  # optimizer parameter groups
-
-            for k, v in self.model.named_modules():
-                if hasattr(v, "bias") and isinstance(v.bias, nn.Parameter):
-                    pg2.append(v.bias)  # biases
-                if isinstance(v, nn.BatchNorm2d) or "bn" in k:
-                    pg0.append(v.weight)  # no decay
-                elif hasattr(v, "weight") and isinstance(v.weight, nn.Parameter):
-                    pg1.append(v.weight)  # apply decay
-
-            optimizer = torch.optim.SGD(
-                pg0, lr=lr, momentum=self.momentum, nesterov=True
-            )
-            optimizer.add_param_group(
-                {"params": pg1, "weight_decay": self.weight_decay}
-            )  # add pg1 with weight_decay
-            optimizer.add_param_group({"params": pg2})
-            self.optimizer = optimizer
-
-        return self.optimizer

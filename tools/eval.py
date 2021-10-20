@@ -140,7 +140,7 @@ def main(exp, args, num_gpu):
 
     model = exp.get_model()
     logger.info("Model Summary: {}".format(get_model_info(model, exp.test_size)))
-    logger.info("Model Structure:\n{}".format(str(model)))
+    # logger.info("Model Structure:\n{}".format(str(model)))
 
     evaluator = exp.get_evaluator(args.batch_size, is_distributed, args.test, args.legacy)
 
@@ -184,6 +184,7 @@ def main(exp, args, num_gpu):
     *_, summary = evaluator.evaluate(
         model, is_distributed, args.fp16, trt_file, decoder, exp.test_size
     )
+    # *_, summary = evaluator.evaluate(resJson="food60-s-100-3-val.json")
     logger.info("\n" + summary)
 
 
