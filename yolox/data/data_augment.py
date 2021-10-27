@@ -189,8 +189,8 @@ class TrainTransform:
         # bbox_o: [xyxy] to [c_x,c_y,w,h]
         boxes_o = xyxy2cxcywh(boxes_o)
 
-        # if random.random() < self.hsv_prob:
-        #     augment_hsv(image)
+        if random.random() < self.hsv_prob:
+            augment_hsv(image)
         image_t, boxes = _mirror(image, boxes, self.flip_prob)
         height, width, _ = image_t.shape
         image_t, r_ = preproc(image_t, input_dim)

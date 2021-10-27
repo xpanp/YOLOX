@@ -93,6 +93,8 @@ class MosaicDetection(Dataset):
 
             for i_mosaic, index in enumerate(indices):
                 img, _labels, _, img_id = self._dataset.pull_item(index)
+                # cv2.imshow(str(index), img)
+                # cv2.waitKey(0)
                 h0, w0 = img.shape[:2]  # orig hw
                 scale = min(1. * input_h / h0, 1. * input_w / w0)
                 img = cv2.resize(
@@ -120,6 +122,9 @@ class MosaicDetection(Dataset):
                     labels[:, 3] = scale * _labels[:, 3] + padh
                 mosaic_labels.append(labels)
 
+            # cv2.imshow("hello1", mosaic_img)
+            # cv2.waitKey(0)
+
             if len(mosaic_labels):
                 mosaic_labels = np.concatenate(mosaic_labels, 0)
                 np.clip(mosaic_labels[:, 0], 0, 2 * input_w, out=mosaic_labels[:, 0])
@@ -141,12 +146,16 @@ class MosaicDetection(Dataset):
             # -----------------------------------------------------------------
             # CopyPaste: https://arxiv.org/abs/2012.07177
             # -----------------------------------------------------------------
+            cv2.imshow("hello1", mosaic_img)
+            cv2.waitKey(0)
             if (
                 self.enable_mixup
                 and not len(mosaic_labels) == 0
                 and random.random() < self.mixup_prob
             ):
                 mosaic_img, mosaic_labels = self.mixup(mosaic_img, mosaic_labels, self.input_dim)
+                cv2.imshow("hello2", mosaic_img)
+                cv2.waitKey(0)
             mix_img, padded_labels = self.preproc(mosaic_img, mosaic_labels, self.input_dim)
             img_info = (mix_img.shape[1], mix_img.shape[0])
 

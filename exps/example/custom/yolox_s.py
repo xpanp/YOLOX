@@ -195,3 +195,42 @@ class Exp(MyExp):
             self.optimizer = optimizer
 
         return self.optimizer
+
+import cv2
+import numpy as np
+
+def preproc(img, input_size, swap=(2, 0, 1)):
+    if len(img.shape) == 3:
+        padded_img = np.ones((input_size[0], input_size[1], 3), dtype=np.uint8) * 114
+    else:
+        padded_img = np.ones(input_size, dtype=np.uint8) * 114
+
+    r = min(input_size[0] / img.shape[0], input_size[1] / img.shape[1])
+    resized_img = cv2.resize(
+        img,
+        (int(img.shape[1] * r), int(img.shape[0] * r)),
+        interpolation=cv2.INTER_LINEAR,
+    ).astype(np.uint8)
+    cv2.imshow("test", resized_img)
+    cv2.waitKey(0)
+    padded_img[: int(img.shape[0] * r), : int(img.shape[1] * r)] = resized_img
+
+    padded_img = padded_img.transpose(swap)
+    padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
+    return padded_img, r
+
+# test mosaic
+if __name__ == "__main__":
+    from yolox.data import DataPrefetcher
+    exp = Exp()
+    data_loader = exp.get_data_loader(1, False)
+    print("init prefetcher, this might take one minute or less...")
+    img, *_ = exp.dataset.__getitem__(0)
+    
+    # img = cv2.imdecode(np.fromfile("datasets/60test/52橙子/橙子_3703.jpg",dtype=np.uint8),-1)
+    # print(type(img), img.shape)
+    # cv2.imshow("test", img)
+    # cv2.waitKey(0)
+
+
+
